@@ -1,0 +1,35 @@
+# Credentials and secrets
+credentials.json
+token.json
+.env
+.env.local
+
+# Cache files
+.gmail_cache.json
+
+# IDE and editor files
+.qwen/
+.obsidian/
+
+# Session data
+.linkedin_session/
+
+# Logs
+Logs/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.python/
+*.egg-info/
+.eggs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp

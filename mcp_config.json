@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "email-mcp": {
+      "command": "python",
+      "args": ["scripts/mcp/email_mcp.py"],
+      "cwd": "D:\\hackathons-Q-4\\hackathon 0 new-2\\AI_Employee_Vault"
+    }
+  }
+}
