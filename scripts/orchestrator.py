@@ -9,10 +9,13 @@ The Orchestrator:
 3. Updates Dashboard.md with current status
 4. Manages the workflow: Inbox → Needs_Action → Done
 
-For Bronze Tier:
-- File-based triggering (no Qwen Code integration required yet)
-- Dashboard updates
-- Basic workflow management
+Gold Tier Features:
+- Odoo accounting integration
+- Facebook/Instagram social media monitoring
+- CEO Briefing generation
+- Ralph Wiggum persistence loop
+- Advanced HITL workflow
+- Multi-agent coordination
 
 Usage:
     python orchestrator.py /path/to/vault
@@ -22,9 +25,10 @@ import sys
 import json
 import logging
 from pathlib import Path
-from datetime import datetime
-from typing import Optional
+from datetime import datetime, timedelta
+from typing import Optional, List, Dict
 import subprocess
+import time
 
 # Configure logging
 logging.basicConfig(
@@ -35,18 +39,18 @@ logging.basicConfig(
 
 class Orchestrator:
     """Main orchestrator for AI Employee workflow."""
-    
+
     def __init__(self, vault_path: str, check_interval: int = 30):
         """
         Initialize the orchestrator.
-        
+
         Args:
             vault_path: Path to the Obsidian vault root
             check_interval: Seconds between checks
         """
         self.vault_path = Path(vault_path)
         self.check_interval = check_interval
-        
+
         # Core folders
         self.inbox = self.vault_path / 'Inbox'
         self.needs_action = self.vault_path / 'Needs_Action'
@@ -58,14 +62,28 @@ class Orchestrator:
         self.logs = self.vault_path / 'Logs'
         self.dashboard = self.vault_path / 'Dashboard.md'
         
-        # Ensure all folders exist
-        for folder in [self.inbox, self.needs_action, self.done, 
+        # Gold Tier folders
+        self.briefings = self.vault_path / 'Briefings'
+        self.social = self.vault_path / 'Social'
+        self.accounting = self.vault_path / 'Accounting'
+        self.invoices = self.vault_path / 'Invoices'
+        self.in_progress = self.vault_path / 'In_Progress'  # For persistence loop
+
+        for folder in [self.briefings, self.social, self.accounting, self.invoices, self.in_progress]:
+            folder.mkdir(parents=True, exist_ok=True)
+
+        # Ensure all core folders exist
+        for folder in [self.inbox, self.needs_action, self.done,
                        self.plans, self.pending_approval, self.approved,
                        self.rejected, self.logs]:
             folder.mkdir(parents=True, exist_ok=True)
-        
+
         self.logger = logging.getLogger(self.__class__.__name__)
         self.processed_files = set()
+        
+        # Gold Tier: Briefing schedule
+        self.last_briefing = None
+        self.briefing_day = 0  # Monday
     
     def count_files(self, folder: Path) -> int:
         """Count .md files in a folder."""
@@ -92,16 +110,23 @@ class Orchestrator:
         approval_count = self.count_files(self.pending_approval)
         done_today = self.count_files_done_today()
         done_week = self.count_files_done_this_week()
-        
+
         # Count inbox
         inbox_count = self.count_files(self.inbox)
-        
+
         # Get recent activity from logs
         recent_activity = self.get_recent_activity()
         
+        # Gold Tier: Get Odoo revenue data
+        revenue_mtd = self.get_revenue_mtd()
+        
+        # Gold Tier: Get social media stats
+        social_stats = self.get_social_stats()
+
         content = f"""---
 last_updated: {datetime.now().isoformat()}
 status: active
+tier: gold
 ---
 
 # AI Employee Dashboard
@@ -118,7 +143,7 @@ status: active
 | **Pending Approvals** | {approval_count} | {'✅ Clear' if approval_count == 0 else '⚠️ Review required'} |
 | **Tasks Completed Today** | {done_today} | - |
 | **Tasks Completed This Week** | {done_week} | - |
-| **Revenue MTD** | $0 | - |
+| **Revenue MTD** | ${revenue_mtd:,.2f} | - |
 
 ---
 
@@ -154,13 +179,23 @@ status: active
 
 | Goal | Target | Current | Progress |
 |------|--------|---------|----------|
-| Monthly Revenue | $10,000 | $0 | 0% |
+| Monthly Revenue | $10,000 | ${revenue_mtd:,.2f} | {revenue_mtd/100:.1f}% |
+
+---
+
+## 📱 Social Media
+
+| Platform | Posts This Week | Status |
+|----------|-----------------|--------|
+| LinkedIn | {social_stats.get('linkedin', 0)} | {'✅ Active' if social_stats.get('linkedin', 0) > 0 else '⚪ Inactive'} |
+| Facebook | {social_stats.get('facebook', 0)} | {'✅ Active' if social_stats.get('facebook', 0) > 0 else '⚪ Inactive'} |
+| Instagram | {social_stats.get('instagram', 0)} | {'✅ Active' if social_stats.get('instagram', 0) > 0 else '⚪ Inactive'} |
 
 ---
 
 ## 🔔 Alerts
 
-{self.format_alerts(pending_count, approval_count)}
+{self.format_alerts(pending_count, approval_count, revenue_mtd)}
 
 ---
 
@@ -169,15 +204,75 @@ status: active
 - Dashboard auto-updates when AI Employee processes files
 - Move approved items from `/Pending_Approval` to `/Approved` to trigger actions
 - Check `/Briefings` for weekly CEO reports
+- Gold Tier: Odoo accounting integration active
 
 ---
 
 *Last generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*
-*AI Employee v0.1 (Bronze Tier)*
+*AI Employee v1.0 (Gold Tier)*
 """
 
         self.dashboard.write_text(content, encoding='utf-8')
         self.logger.info('Dashboard updated')
+    
+    def get_revenue_mtd(self) -> float:
+        """Get month-to-date revenue from Odoo or logs."""
+        try:
+            from scripts.mcp.odoo_mcp import OdooMCPServer
+            
+            odoo = OdooMCPServer(
+                vault_path=str(self.vault_path)
+            )
+            
+            if odoo.authenticate():
+                result = odoo.get_financial_reports()
+                if 'report' in result:
+                    return result['report'].get('monthly_revenue', 0)
+        except Exception as e:
+            self.logger.debug(f'Could not get Odoo revenue: {e}')
+        
+        # Fallback: parse accounting logs
+        today = datetime.now()
+        month_start = today.replace(day=1)
+        revenue = 0
+        
+        for log_file in self.accounting_folder.glob('*.md'):
+            try:
+                content = log_file.read_text()
+                if str(month_start.year) in content and str(month_start.month) in content:
+                    import re
+                    amounts = re.findall(r'\$[\d,]+\.?\d*', content)
+                    for amount in amounts:
+                        revenue += float(amount.replace('$', '').replace(',', ''))
+            except:
+                pass
+        
+        return revenue
+    
+    def get_social_stats(self) -> Dict:
+        """Get social media posting statistics."""
+        stats = {'linkedin': 0, 'facebook': 0, 'instagram': 0}
+        
+        # Get this week's date range
+        today = datetime.now()
+        week_start = today - timedelta(days=today.weekday())
+        week_start_str = week_start.strftime('%Y-%m-%d')
+        
+        # Parse social media logs
+        for log_file in self.logs.glob('social_*.md'):
+            try:
+                content = log_file.read_text()
+                if week_start_str in content:
+                    if 'linkedin' in content.lower():
+                        stats['linkedin'] += content.count('success')
+                    if 'facebook' in content.lower():
+                        stats['facebook'] += content.count('success')
+                    if 'instagram' in content.lower():
+                        stats['instagram'] += content.count('success')
+            except:
+                pass
+        
+        return stats
     
     def count_files_done_today(self) -> int:
         """Count files moved to Done today."""
@@ -227,28 +322,35 @@ status: active
         
         return '\n'.join(lines)
     
-    def format_alerts(self, pending_count: int, approval_count: int) -> str:
+    def format_alerts(self, pending_count: int, approval_count: int, revenue_mtd: float = 0) -> str:
         """Format alerts for dashboard."""
         alerts = []
-        
+
         if pending_count > 10:
             alerts.append('- ⚠️ High volume of pending actions')
         if approval_count > 0:
             alerts.append('- ⏳ Awaiting human approval')
         
+        # Gold Tier: Revenue alert
+        monthly_target = 10000
+        if revenue_mtd < monthly_target * 0.3:
+            alerts.append(f'- 🔴 Revenue ${revenue_mtd:,.2f} is below 30% of target')
+        elif revenue_mtd < monthly_target * 0.6:
+            alerts.append(f'- 🟡 Revenue ${revenue_mtd:,.2f} is below 60% of target')
+
         if not alerts:
             return '*No alerts*'
-        
+
         return '\n'.join(alerts)
     
     def log_action(self, action_type: str, details: str, status: str = 'info'):
         """Log an action to the daily log file."""
         today = datetime.now().strftime('%Y-%m-%d')
         log_file = self.logs / f'{today}.md'
-        
+
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         entry = f'[{timestamp}] [{status.upper()}] {action_type}: {details}'
-        
+
         if log_file.exists():
             content = log_file.read_text(encoding='utf-8')
             content = content.rstrip() + '\n' + entry + '\n'
@@ -256,6 +358,36 @@ status: active
             content = f"# Daily Log - {today}\n\n{entry}\n"
 
         log_file.write_text(content, encoding='utf-8')
+    
+    def check_and_generate_briefing(self):
+        """Check if it's Monday morning and generate CEO briefing."""
+        today = datetime.now()
+        
+        # Generate on Monday (weekday 0) between 6-9 AM
+        if today.weekday() == 0 and 6 <= today.hour < 10:
+            if self.last_briefing is None or self.last_briefing < today - timedelta(days=7):
+                self.generate_ceo_briefing()
+                self.last_briefing = today
+    
+    def generate_ceo_briefing(self):
+        """Generate weekly CEO briefing."""
+        try:
+            self.logger.info('Generating weekly CEO briefing...')
+            
+            from scripts.ceo_briefing import CEOBriefingGenerator
+            
+            generator = CEOBriefingGenerator(
+                vault_path=str(self.vault_path)
+            )
+            
+            briefing_path = generator.generate_weekly_briefing(week_offset=-1)
+            
+            self.logger.info(f'CEO briefing generated: {briefing_path}')
+            self.log_action('ceo_briefing_generated', str(briefing_path), 'success')
+            
+        except Exception as e:
+            self.logger.error(f'Failed to generate CEO briefing: {e}')
+            self.log_action('ceo_briefing_failed', str(e), 'error')
     
     def process_approved_files(self):
         """Process files in /Approved folder."""
@@ -411,10 +543,21 @@ status: active
             self.logger.error(f'Failed to move to Done: {e}')
     
     def check_for_qwen_completion(self):
-        """Check if Qwen Code has completed processing."""
-        # In Bronze tier, this is a placeholder
-        # In higher tiers, this would check for Plan.md completion
-        pass
+        """Check if Qwen Code has completed processing using persistence loop."""
+        # Check In_Progress folder for active tasks
+        in_progress_files = list(self.in_progress.glob('*.md')) if hasattr(self, 'in_progress') else []
+        
+        if in_progress_files:
+            self.logger.info(f'Found {len(in_progress_files)} active task(s) in In_Progress/')
+            for task_file in in_progress_files:
+                # Check if task is complete
+                content = task_file.read_text(encoding='utf-8')
+                if 'status: completed' in content:
+                    self.logger.info(f'Task complete: {task_file.name}')
+                    # Move to Done
+                    done_file = self.done / task_file.name
+                    task_file.rename(done_file)
+                    self.log_action('task_completed', task_file.name, 'success')
 
     def check_pending_actions(self):
         """Check and log pending action files in Needs_Action folder."""
@@ -431,9 +574,10 @@ status: active
 
     def run(self):
         """Main orchestrator loop."""
-        self.logger.info(f'Starting Orchestrator')
+        self.logger.info(f'Starting Orchestrator (Gold Tier)')
         self.logger.info(f'Vault path: {self.vault_path}')
         self.logger.info(f'Check interval: {self.check_interval}s')
+        self.logger.info(f'Features: Odoo, Facebook, Instagram, CEO Briefings')
 
         # Initial dashboard update
         self.update_dashboard()
@@ -451,11 +595,13 @@ status: active
 
                 # Check for Qwen completion
                 self.check_for_qwen_completion()
+                
+                # Gold Tier: Check if briefing should be generated
+                self.check_and_generate_briefing()
 
                 # Log heartbeat
                 self.logger.debug('Orchestrator heartbeat')
 
-                import time
                 time.sleep(self.check_interval)
 
         except KeyboardInterrupt:

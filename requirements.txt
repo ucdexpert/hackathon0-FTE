@@ -1,10 +1,12 @@
 # AI Employee Vault - Python Dependencies
-# Silver Tier Requirements
+# Gold Tier Requirements (Complete)
 
 # =============================================================================
-# CORE DEPENDENCIES (Required for Bronze Tier)
+# CORE DEPENDENCIES (Required for all tiers)
 # =============================================================================
 watchdog>=4.0.0
+python-dotenv>=1.0.0
+requests>=2.31.0
 
 # =============================================================================
 # GMAIL WATCHER
@@ -28,17 +30,37 @@ playwright>=1.40.0
 mcp>=0.1.0
 
 # =============================================================================
-# SCHEDULER
-# Optional: For advanced scheduling (alternative to cron/Task Scheduler)
+# ODOO INTEGRATION (Gold Tier)
+# Odoo ERP integration via XML-RPC
 # =============================================================================
-# schedule>=1.2.0
+xmlrpc-client>=0.1.0
+
+# =============================================================================
+# FACEBOOK & INSTAGRAM (Gold Tier)
+# Facebook Graph API for social media integration
+# =============================================================================
+# Note: facebook-sdk is optional, we use requests for Graph API
+# facebook-sdk>=3.1.0
+
+# =============================================================================
+# SCHEDULER
+# For automated scheduling of tasks
+# =============================================================================
+schedule>=1.2.0
+APScheduler>=3.10.0
+
+# =============================================================================
+# ADDITIONAL UTILITIES (Gold Tier)
+# =============================================================================
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
 
 # =============================================================================
 # INSTALLATION COMMANDS
 # =============================================================================
-# 
+#
 # Basic (Bronze Tier):
-#   pip install watchdog
+#   pip install watchdog python-dotenv requests
 #
 # Gmail Integration:
 #   pip install google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client
@@ -50,7 +72,17 @@ mcp>=0.1.0
 # MCP Server:
 #   pip install mcp
 #
-# All Dependencies (Silver Tier):
+# Odoo Integration (Gold Tier):
+#   pip install xmlrpc-client
+#
+# Facebook/Instagram (Gold Tier):
+#   # Uses requests library (already included)
+#   # No additional packages required
+#
+# Scheduler (Gold Tier):
+#   pip install schedule APScheduler
+#
+# All Dependencies (Gold Tier):
 #   pip install -r requirements.txt
 #   playwright install
 #
